@@ -1,0 +1,349 @@
+#include <exception>
+#include <initializer_list>
+#include <utility>
+
+namespace hs
+{
+
+// Missing from C++14
+template< class From, class To >
+constexpr bool is_convertible_v = std::is_convertible<From, To>::value;
+
+template<class A, class B>
+constexpr bool is_same_v = std::is_same<A, B>::value;
+
+// Internals
+namespace detail
+{
+template < typename T, typename std::enable_if_t<std::is_trivially_destructible<T>::value, int> = 0>
+void destruct(T* t) {}
+
+template < typename T, typename std::enable_if_t < !std::is_trivially_destructible<T>::value, int > = 0 >
+void destruct(T* t)
+{
+	t->~T();
+}
+
+
+} // namespace detail
+
+// Optional types
+class bad_optional_access : public std::exception {};
+
+struct nullopt_t
+{
+	explicit nullopt_t() = default;
+};
+constexpr nullopt_t nullopt{};
+
+struct in_place_t
+{
+	explicit in_place_t() = default;
+};
+constexpr in_place_t in_place{};
+
+// Public Class
+template <class T>
+class optional
+{
+public:
+	using value_type = T;
+
+	// Constructors
+
+	constexpr optional() noexcept = default;
+	constexpr optional(nullopt_t) noexcept {}
+
+	constexpr optional(const optional& other)
+	{
+		if (!other.has_value_) return;
+		new (&storage_) T(*other);
+		has_value_ = true;
+	}
+
+	constexpr optional(optional&& other)
+	{
+		if (!other.has_value_) return;
+		new (&storage_) T(std::move(*other));
+		has_value_ = true;
+	}
+
+	template < class U >
+	optional(const optional<U>& other)
+	{
+		if (!other.has_value()) return;
+		new (&storage_) T(*other);
+		has_value_ = true;
+	}
+
+	template < class U >
+	optional(optional<U>&& other)
+	{
+		if (!other.has_value()) return;
+		new (&storage_) T(std::move(*other));
+		has_value_ = true;
+	}
+
+	template< class... Args >
+	constexpr explicit optional(in_place_t, Args&& ... args)
+	{
+		new (&storage_) T(std::forward<Args>(args)...);
+		has_value_ = true;
+	}
+
+	template< class U, class... Args >
+	constexpr explicit optional(hs::in_place_t,
+	                            std::initializer_list<U> ilist,
+	                            Args&& ... args)
+	{
+		new (&storage_) T(std::forward<std::initializer_list<U>>(ilist), std::forward<Args>(args)...);
+		has_value_ = true;
+	}
+
+	template < class U = value_type,
+	           typename std::enable_if_t < is_convertible_v<U, T>&&
+	                                       !is_same_v<std::decay_t<U>, optional<T>>, int > = 0
+	           >
+	constexpr optional(U && val)
+	{
+		new (&storage_) T(std::forward<U>(val));
+		has_value_ = true;
+	}
+
+	// Destructor
+	~optional()
+	{
+		if (has_value_) detail::destruct<T>(reinterpret_cast<T*>(&storage_));
+	}
+
+	// Operator =
+	optional& operator=(nullopt_t) noexcept
+	{
+		reset();
+		return *this;
+	}
+
+	// Don't know why the following two overloads (2/3) are separate from copy-op 5/6
+	constexpr optional& operator=(const optional& other)
+	{
+		if (other.has_value_)
+		{
+			if (has_value_)
+			{
+				**this = *other;
+			}
+			else
+			{
+				new (&storage_) T(*other);
+				has_value_ = true;
+			}
+		}
+		else
+		{
+			reset();
+		}
+		return *this;
+	}
+
+	constexpr optional& operator=(optional&& other) noexcept
+	{
+		if (other.has_value_)
+		{
+			if (has_value_)
+			{
+				**this = std::move(*other);
+			}
+			else
+			{
+				new (&storage_) T(std::move(*other));
+				has_value_ = true;
+			}
+		}
+		else
+		{
+			reset();
+		}
+		return *this;
+	}
+
+	template < class U = value_type,
+	           typename std::enable_if_t < is_convertible_v<U, T>&&
+	                                       !is_same_v<std::decay_t<U>, optional<T>>, int > = 0
+	           >
+	optional & operator=(U && value)
+	{
+		if (has_value_)
+		{
+			**this = std::forward<U>(value);
+		}
+		else
+		{
+			new (&storage_) T(std::forward<U>(value));
+			has_value_ = true;
+		}
+		return *this;
+	}
+
+	template< class U >
+	optional& operator=(const optional<U>& other)
+	{
+		if (other.has_value())
+		{
+			if (has_value_)
+			{
+				**this = *other;
+			}
+			else
+			{
+				new (&storage_) T(*other);
+				has_value_ = true;
+			}
+		}
+		else
+		{
+			reset();
+		}
+		return *this;
+	}
+
+	template< class U >
+	optional& operator=(optional<U>&& other)
+	{
+		if (other.has_value())
+		{
+			if (has_value_)
+			{
+				**this = std::move(*other);
+			}
+			else
+			{
+				new (&storage_) T(std::move(*other));
+				has_value_ = true;
+			}
+		}
+		else
+		{
+			reset();
+		}
+		return *this;
+	}
+
+	// Operator ->, *
+	// TODO unit test ->
+
+	constexpr T* operator->() noexcept { return reinterpret_cast<T*>(&storage_); }
+	constexpr const T* operator->() const noexcept { return reinterpret_cast<const T*>(&storage_); }
+
+	constexpr T& operator*()& noexcept { return *reinterpret_cast<T*>(&storage_); }
+	constexpr const T& operator*()const& noexcept { return *reinterpret_cast<const T*>(&storage_); }
+
+	constexpr T&& operator*()&& noexcept { return std::move(*reinterpret_cast<T*>(&storage_)); }
+
+	// What does const in this context mean ??? How to test this
+	constexpr const T&& operator*() const&& noexcept { return std::move(*reinterpret_cast<const T*>(&storage_)); }
+
+	// operator bool, has_value()
+	constexpr operator bool() const noexcept { return has_value_; }
+	constexpr bool has_value() const noexcept { return has_value_; }
+
+	// value()
+
+	constexpr T& value()&
+	{
+		if (has_value_) return *reinterpret_cast<T*>(&storage_);
+		else throw bad_optional_access();
+	}
+
+	constexpr const T& value() const&
+	{
+		if (has_value_) return *reinterpret_cast<const T*>(&storage_);
+		else throw bad_optional_access();
+	}
+
+	// This is on an r-value Do we need to do anything different here ???
+	constexpr T&& value()&&
+	{
+		if (has_value_) return std::move(*reinterpret_cast<T*>(&storage_));
+		else throw bad_optional_access();
+	}
+
+	// This is on an r-value Do we need to do anything different here ???
+	// TODO unittest (HOW ???)
+	constexpr const T&& value() const&&
+	{
+		if (has_value_) return std::move(*reinterpret_cast<T*>(&storage_));
+		else throw bad_optional_access();
+	}
+
+	// value_or()
+	template <class U>
+	constexpr T value_or(U&& default_value) const&
+	{
+		return (has_value_) ? (**this) : static_cast<T>(std::forward<U>(default_value));
+	}
+
+	template <class U>
+	constexpr T value_or(U&& default_value)&&
+	{
+		return (has_value_) ? std::move(**this) : static_cast<T>(std::forward<U>(default_value));
+	}
+
+	// swap
+	void swap(optional& other)
+	{
+		if (has_value_ && other)
+		{
+			std::swap(**this, *other);
+		}
+		else if (has_value_)
+		{
+			other = std::move(*this);
+			reset();
+		}
+		else if (other)
+		{
+			*this = std::move(*other);
+			other.reset();
+		}
+	}
+
+
+	// reset
+	void reset() noexcept
+	{
+		if (has_value_) detail::destruct<T>(reinterpret_cast<T*>(&storage_));
+		has_value_ = false;
+	}
+
+	// emplace
+
+
+	template< class... Args >
+	T& emplace(Args&& ... args)
+	{
+		new (&storage_) T(std::forward<Args>(args)...);
+		has_value_ = true;
+		return **this;
+	}
+
+	template< class U, class... Args >
+	T& emplace(std::initializer_list<U> ilist, Args&& ... args)
+	{
+		new (&storage_) T(std::forward<std::initializer_list<U>>(ilist), std::forward<Args>(args)...);
+		has_value_ = true;
+		return **this;
+	}
+
+private:
+	bool has_value_{ false };
+	typename std::aligned_storage<sizeof(T), alignof(T)>::type storage_;
+};
+// TBD ...
+// Non-member func
+// comparators
+// make_optional
+// std::swap
+
+// Helper Class
+// std::hash
+}
