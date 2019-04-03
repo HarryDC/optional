@@ -342,6 +342,25 @@ private:
 // Non-member func
 // comparators
 // make_optional
+
+template <class T>
+constexpr optional<std::decay_t<T>> make_optional(T&& value)
+{
+	return optional<std::decay_t<T>>(std::forward<T>(value));
+}
+
+template <class T, class... Args>
+constexpr optional<T> make_optional(Args&& ... args)
+{
+	return optional<T>(in_place, std::forward<Args>(args)...);
+}
+
+template <class T, class U, class... Args>
+constexpr optional<T> make_optional(std::initializer_list<U> ilist, Args&& ... args)
+{
+	return optional<T>(in_place, ilist, std::forward<Args>(args)...);
+}
+
 // std::swap
 
 // Helper Class

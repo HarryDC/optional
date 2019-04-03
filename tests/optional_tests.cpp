@@ -9,6 +9,7 @@
 using hs::optional;
 using hs::nullopt;
 using hs::in_place;
+using hs::make_optional;
 
 TEST(Optional, ConstructorEmpty)
 {
@@ -380,3 +381,44 @@ TEST(Optional, MoveAccess)
 	EXPECT_EQ("test", v);
 }
 
+TEST(Optional, MakeOptional)
+{
+	auto opt = make_optional(1.2);
+
+	static_assert(std::is_same_v<optional<double>, decltype(opt)>, "Not the expected type");
+	EXPECT_TRUE(opt);
+	EXPECT_NEAR(1.2, *opt, 1e-4);
+}
+
+TEST(Optional, MakeOptionalInPlace)
+{
+	struct X
+	{
+		X(int a, std::string b) : a(a), b(b) {}
+		int a;
+		std::string b;
+	};
+
+	auto opt = make_optional<X>(1, "hello");
+	static_assert(std::is_same_v<optional<X>, decltype(opt)>, "Not the expected type");
+	EXPECT_TRUE(opt);
+	EXPECT_EQ(1, opt->a);
+	EXPECT_EQ("hello", opt->b);
+}
+
+TEST(Optional, MakeOptionalInPlaceInitializerList)
+{
+	struct X
+	{
+		X(std::vector<int> a, std::string b) : a(a), b(b) {}
+		std::vector<int> a;
+		std::string b;
+	};
+
+	auto opt = make_optional<X>({ 1, 2, 3 }, "hello");
+	static_assert(std::is_same_v<optional<X>, decltype(opt)>, "Not the expected type");
+	EXPECT_TRUE(opt);
+	EXPECT_EQ(3, opt->a.size());
+	EXPECT_EQ("hello", opt->b);
+
+}
