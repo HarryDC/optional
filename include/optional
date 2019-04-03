@@ -366,3 +366,23 @@ constexpr optional<T> make_optional(std::initializer_list<U> ilist, Args&& ... a
 // Helper Class
 // std::hash
 }
+
+namespace std
+{
+
+template <class T>
+void swap(hs::optional<T>& lhs, hs::optional<T>& rhs)
+{
+	lhs.swap(rhs);
+}
+
+template<class T>
+struct hash<hs::optional<T>>
+{
+	size_t operator()(const hs::optional<T>& o) const
+	{
+		return (o) ? std::hash<std::remove_const_t<T>>()(*o) : 0;
+	}
+};
+
+}

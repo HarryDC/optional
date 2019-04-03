@@ -420,5 +420,14 @@ TEST(Optional, MakeOptionalInPlaceInitializerList)
 	EXPECT_TRUE(opt);
 	EXPECT_EQ(3, opt->a.size());
 	EXPECT_EQ("hello", opt->b);
+}
 
+TEST(Optional, Hash)
+{
+	optional<int> i(123456);
+	optional<std::string> s("hello");
+
+	EXPECT_EQ(std::hash<std::string>()(std::string("hello")), std::hash<optional<std::string>>()(s));
+	EXPECT_EQ(std::hash<int>()(123456), std::hash<optional<int>>()(i));
+	EXPECT_EQ(0, std::hash<optional<int>>()(nullopt));
 }
